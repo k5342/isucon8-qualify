@@ -1,0 +1,49 @@
+---
+- hosts: hosts
+  remote_user: ubuntu
+  tasks:
+  - name: Append publickey into ~/.ssh/authorized_keys
+    lineinfile:
+      dest: ~/.ssh/authorized_keys
+      mode: 0600
+      line: "{{ item }}"
+    with_items:
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCn8FLATuj1JFMTpQQNSJk3osHSxmI6NEUb+/CDLTb2yXnCdqasJNKexKeGvLXKzpWggxFDXY7TDiX2hHJ7cxA3r/GSXqO/aurYcnK1drzCX57s8mtj2GqRAz9Vu5jwPg8ct4R9/lG+dLZZ1T+K87qWC7+7RCUAMZSTNteWazR7SRaw1g+9gi4HAA1vBA83TnGb7k4TUlwhUJMLjYQTf2JDhahgLdROjKB3oAMJkJARgxBTVVNbxrukRXD7eiHzYPQBvjqzK+6RsIVQiQrv9gF2ELdjP/rOYe/T0JHgUKsQ6hs/pSJ9Xqb3AVhiHJmI0NuBia+oO/7OJjtau2ABWIAT k5342"
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC1gIvcqY+HNuttIuLb84e40jwRdSL0t0kGExPGOM7f4rjlCWst64QCaGG2A0wNoLB8Gtf2j2/oeg0uwYNZPOkOBtky7Xoibd/FaOmMOeCyD7g6sPhd++44kOAeL99wufcIHMA8rmZQ/Li0w7EwQS2XK2WGLwY/9zg2AWGxeTaDDo3Hk9js+egNR2qXtWZ5mSXHUmXzkNJ5Z+AbAwXQEyplHyI4UW6x5Y/rEaq37Tn8B+HNYosBWGy23VCn7nT5jolQbagcjwR2chUslz+cc1wzANuoFj+Ayww/gGA1NXLDFjytJLfG8tJqgw3vdkxCPS1nkRZ9GDo9hpWqoTtjhpur teppest1215@gmail.com"
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCsON8KE5VUQWMxiDJSh8qDb3AdJ8+S3T3qwyE9nh6G5qaUZtaiYUW6yB8LzsEmYnte1QbPMAndpm12mXWXYqNGCaLfOKESId6p9LnmoCr/yG0+0ikOiHEX5JT9m22f5IR95Q/Fc0aEn4Ei+tQdfkVeasN249hsyc4yQLkO+DDtHrYKmW9ubowurRROU7p94P2MNpPUbiSQnXatOxs1/FnrfHjRHjzGHHl72t1uTayZHDdh7f4r2xnL7NtxMo5S1ETjZX9TooUzBEPP8G3v0JhEAUh/hxqNDlWsA5xpXQORKmEkjf6sjEpnrjUzIknI88+CLrsXywadrXm2wtcQ2VNL prolab@PC005.std.CIS.kurume-nct.ac.jp"
+  - name: Install dependencies
+    become_user: root
+    apt:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - git
+      - zsh
+      - vim
+      - htop
+      - dstat
+  - name: Clone dotfiles into home directory
+    git:
+      repo: https://bitbucket.org/k5342/dotfiles.git
+      dest: ~/dotfiles
+      track_submodules: yes
+    ignore_errors: True
+  - name: Create symlinks for dotfiles
+    command: "ln -s ~/dotfiles/{{ item }} ~/."
+    with_items:
+    - .vimrc
+    - .vim
+    - .zshrc
+    ignore_errors: True
+  - name: Add users
+    become_user: root
+    user:
+      name: "{{ item }}"
+      shell: /usr/bin/zsh
+      groups: sudo,www-data
+      append: yes
+    with_items:
+    - k5342
+    - chigichan24
+    - euglena1215
