@@ -1,0 +1,62 @@
+---
+- name: Add users
+  user:
+    name: "{{ id }}"
+- name: Add user to admin group
+  user:
+    name: "{{ id }}"
+    groups: wheel,www-data,www,http,admin,sudo
+    append: yes
+  ignore_errors: yes
+- name: Change users default shell
+  user:
+    name: "{{ id }}"
+    shell: /bin/zsh
+- name: Clone dotfiles into home directory
+  git:
+    repo: https://bitbucket.org/k5342/dotfiles.git
+    dest: ~/dotfiles
+    track_submodules: yes
+  ignore_errors: True
+- name: Create symlinks for dotfiles # cannot use with_items here ;(
+  become: yes
+  become_user: "{{ id }}"
+  file:
+    src: ~/dotfiles/.vimrc
+    dest: ~/.vimrc
+    force: yes
+    state: link
+  ignore_errors: True
+- name: Create symlinks for dotfiles # cannot use with_items here ;(
+  become: yes
+  become_user: "{{ id }}"
+  file:
+    src: ~/dotfiles/.vim
+    dest: ~/.vim
+    force: yes
+    state: link
+  ignore_errors: True
+- name: Create symlinks for dotfiles # cannot use with_items here ;(
+  become: yes
+  become_user: "{{ id }}"
+  file:
+    src: ~/dotfiles/.zshrc
+    dest: ~/.zshrc
+    force: yes
+    state: link
+  ignore_errors: True
+- name: Create ~/.ssh directory
+  become: yes
+  become_user: "{{ id }}"
+  file:
+    path: ~/.ssh
+    mode: 0700
+    state: directory
+- name: Append publickey into ~/.ssh/authorized_keys
+  become: yes
+  become_user: "{{ id }}"
+  lineinfile:
+    create: yes
+    dest: ~/.ssh/authorized_keys
+    mode: 0600
+    line: "{{ ssh_key }}"
