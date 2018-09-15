@@ -3,8 +3,14 @@
   tasks:
   - name: Load users configulation
     include_vars: users.yml
+  - name: Create ~/.ssh directory
+    file:
+      path: ~/.ssh
+      mode: 0700
+      state: directory
   - name: Append publickey into ~/.ssh/authorized_keys
     lineinfile:
+      create: yes
       dest: ~/.ssh/authorized_keys
       mode: 0600
       line: "{{ item.ssh_key }}"
@@ -18,8 +24,12 @@
     with_items:
     - git
     - zsh
-    - htop
     - dstat
+    - vim
+    - unzip
+    - zip
+    - tar
+    - gzip
   - name: Install vim-gtk
     become: yes
     become_user: root

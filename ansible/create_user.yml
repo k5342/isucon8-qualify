@@ -2,17 +2,58 @@
 - name: Add users
   user:
     name: "{{ id }}"
-- name: Add user to admin group
+- name: Remove users password
+  command: passwd -d "{{ id }}"
+- name: Add user to wheel
   user:
     name: "{{ id }}"
-    groups: wheel,www-data,www,http,admin,sudo
+    groups: wheel
     append: yes
-  ignore_errors: yes
+  ignore_errors: True
+- name: Add user to admin
+  user:
+    name: "{{ id }}"
+    groups: admin
+    append: yes
+  ignore_errors: True
+- name: Add user to adm
+  user:
+    name: "{{ id }}"
+    groups: adm
+    append: yes
+  ignore_errors: True
+- name: Add user to nopasswd
+  user:
+    name: "{{ id }}"
+    groups: nopasswd
+    append: yes
+  ignore_errors: True
 - name: Change users default shell
   user:
     name: "{{ id }}"
     shell: /bin/zsh
+  ignore_errors: True
+- name: Add user to www
+  user:
+    name: "{{ id }}"
+    groups: www
+    append: yes
+  ignore_errors: True
+- name: Add user to www-data
+  user:
+    name: "{{ id }}"
+    groups: www-data
+    append: yes
+  ignore_errors: True
+- name: Add user to nginx
+  user:
+    name: "{{ id }}"
+    groups: nginx
+    append: yes
+  ignore_errors: True
 - name: Clone dotfiles into home directory
+  become: yes
+  become_user: "{{ id }}"
   git:
     repo: https://bitbucket.org/k5342/dotfiles.git
     dest: ~/dotfiles
