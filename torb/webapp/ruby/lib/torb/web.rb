@@ -97,7 +97,6 @@ SQL
         statement = db.prepare(sql.gsub("\n"," "))
         result = statement.execute(event_id).to_a
 
-        p result.first
         event['total'] = result.size
         
         event['remains'] = result.select { |row| row['reserved_at'].nil? }.size
@@ -105,8 +104,19 @@ SQL
           event['sheets'][rank] = {
             'total' => result.select {|row| row['rank'] == rank}.size,
             'remains' => result.select {|row| row['rank'] == rank && row['reserved_at'].nil? }.size,
-            'price' => event['price'] + result.select {|row| row['rank'] == rank}.first['price']
+            'price' => event['price'] + result.select {|row| row['rank'] == rank}.first['price'],
+            'detail' => []
           }
+        end
+
+        result.each do |row|
+          row['mine'] = login_user_id == row['user_id']
+          row['reserved'] = true
+          
+          # TODO: 全部消せてるかわからん
+          row.delete('canceled_at')
+          row.delete('event_id')
+          event['sheets'][row['rank']]['detail'] << row
         end
       
         event['public'] = event.delete('public_fg')
