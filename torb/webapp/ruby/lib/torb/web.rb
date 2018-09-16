@@ -137,6 +137,87 @@ SQL
         event
       end
 
+      
+      def get_events_from_ids(event_ids, login_user_id = nil)
+        events = db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
+  
+        # zero fill
+        events.each do |event|
+          event['total']   = 0
+          event['remains'] = 0
+          event['sheets'] = {}
+          %w[S A B C].each do |rank|
+            event['sheets'][rank] = { 'total' => 0, 'remains' => 0, 'detail' => [], 'price' => 0 }
+          end
+        end
+  
+sql = <<SQL
+SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
+FROM sheets
+LEFT OUTER JOIN (
+  SELECT * 
+  FROM reservations 
+  WHERE event_id IN ("#{event_ids.join(", ")}")
+  AND canceled_at IS NULL 
+  GROUP BY event_id, sheet_id 
+  HAVING reserved_at = MIN(reserved_at)
+) as r ON r.sheet_id = sheets.id
+ORDER BY sheets.rank
+SQL
+        statement = db.prepare(sql.gsub("\n"," "))
+        result_with_event_id = statement.execute(event_id).to_a.group_by {|row| row['event_id']}
+        statement.close
+
+        events.each do |event|
+          event['total'] = result_with_event_id[event['id']].size
+        end
+        
+        events.each do |event|
+          event['remains'] = result_with_event_id[event['id']].select { |row| row['reserved_at'].nil? }.size
+        end
+
+        events.each do |event|
+          result_with_rank = result_with_event_id[event['id']].group_by {|row| row['rank'] }  
+          %w[S A B C].each do |rank|
+            event['sheets'][rank] = {
+              'total' => result_with_rank[rank].size,
+              'remains' => result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size,
+              'price' => event['price'] + result_with_rank[rank].first['price'],
+              'detail' => []
+            }    
+        end
+
+        events.each do |event|
+          result = result_with_event_id[event['id']]
+
+          result.each do |row|
+            row['mine'] = login_user_id == row['user_id']
+            row['reserved'] = !row['reserved_at'].nil?
+            row['reserved_at'] = row['reserved_at']&.to_i
+
+            row.delete('canceled_at')
+            row.delete('event_id')
+            row.delete('id')
+            row.delete('price')
+            row.delete('user_id')
+            event['sheets'][row['rank']]['detail'] << row
+          end
+        end
+      
+        events.each do |event|
+          event['public'] = event.delete('public_fg')
+          event['closed'] = event.delete('closed_fg')
+        end
+
+        events.each do |event|
+          %w[S A B C].each do |rank|
+            event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
+          end
+        end
+
+        event
+      end
+
       def sanitize_event(event)
         sanitized = event.dup  # shallow clone
         sanitized.delete('price')
