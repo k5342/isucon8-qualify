@@ -132,6 +132,9 @@ SQL
         event['public'] = event.delete('public_fg')
         event['closed'] = event.delete('closed_fg')
 
+        %w[S A B C].each do |rank|
+          event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
+        end
         event
       end
 
@@ -491,7 +494,7 @@ SQL
       body = keys.join(',')
       body << "\n"
 
-      reports = reservations.each do |reservation|
+      reservations.each do |reservation|
         a = reservation['canceled_at']&.iso8601 || ''
         ret = ""
         ret << reservation['id'].to_s
