@@ -145,19 +145,12 @@ module Torb
         halt status, { error: error }.to_json
       end
 
-      def render_report_csv(reports)
-        keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-        body = keys.join(',')
-        body << "\n"
-        reports.each do |report|
-          body << report
-        end
-
+      def render_report_csv(reports_body)
         headers({
           'Content-Type'        => 'text/csv; charset=UTF-8',
           'Content-Disposition' => 'attachment; filename="report.csv"',
         })
-        body
+        reports_body
       end
     end
 
@@ -421,7 +414,11 @@ module Torb
       event = get_event(event_id)
 
       reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
-      reports = reservations.map do |reservation|
+      keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
+      body = keys.join(',')
+      body << "\n"
+
+      reports = reservations.each do |reservation|
         a = reservation['canceled_at']&.iso8601 || ''
         ret = ""
         ret << reservation['id'].to_s
@@ -440,13 +437,18 @@ module Torb
         ret << ","
         ret << a
         ret << "\n"
+        body << ret
       end
 
-      render_report_csv(reports)
+      render_report_csv(body)
     end
 
     get '/admin/api/reports/sales', admin_login_required: true do
       reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
+      keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
+      body = keys.join(',')
+      body << "\n"
+
       reports = reservations.map do |reservation|
         a = reservation['canceled_at']&.iso8601 || ''
         ret = ""
@@ -466,9 +468,10 @@ module Torb
         ret << ","
         ret << a
         ret << "\n"
+        body << ret
       end
 
-      render_report_csv(reports)
+      render_report_csv(body)
     end
   end
 end
