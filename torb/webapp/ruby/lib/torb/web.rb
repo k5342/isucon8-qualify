@@ -57,7 +57,7 @@ module Torb
       def get_events(where = nil)
         where ||= ->(e) { e['public_fg'] }
 
-        event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
+        event_ids = db.query('SELECT id FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
         events = event_ids.map do |event_id|
           #event = get_event_for_get_events(event_id)
           #binding.pry
@@ -88,7 +88,7 @@ sql = <<SQL
                                SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
                                FROM sheets
                                LEFT OUTER JOIN (
-                                  SELECT * 
+                                  SELECT event_id, user_id, reserved_at, canceled_at 
                                     FROM reservations 
                                       WHERE event_id = ? 
                                         AND canceled_at IS NULL 
@@ -210,7 +210,7 @@ SQL
       end
 
       def validate_rank(rank)
-        db.xquery('SELECT COUNT(*) AS total_sheets FROM sheets WHERE `rank` = ?', rank).first['total_sheets'] > 0
+        db.xquery('SELECT COUNT(id) AS total_sheets FROM sheets WHERE `rank` = ?', rank).first['total_sheets'] > 0
       end
 
       def body_params
@@ -249,7 +249,7 @@ SQL
 
       db.query('BEGIN')
       begin
-        duplicated = db.xquery('SELECT * FROM users WHERE login_name = ?', login_name).first
+        duplicated = db.xquery('SELECT id FROM users WHERE login_name = ?', login_name).first
         if duplicated
           db.query('ROLLBACK')
           halt_with_error 409, 'duplicated'
@@ -274,7 +274,7 @@ SQL
         halt_with_error 403, 'forbidden'
       end
 
-      rows = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
+      rows = db.xquery('SELECT r.event_id, r.id, r.reserved_at, r.canceled_at, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
       recent_reservations = rows.map do |row|
         event = get_event(row['event_id'])
         price = event['sheets'][row['sheet_rank']]['price']
@@ -520,7 +520,8 @@ SQL
     end
 
     get '/admin/api/reports/sales', admin_login_required: true do
-      reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
+      #reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
+      reservations = db.query('SELECT r.canceled_at, r.id, r.user_id, r.reserved_at s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
       body = keys.join(',')
       body << "\n"
