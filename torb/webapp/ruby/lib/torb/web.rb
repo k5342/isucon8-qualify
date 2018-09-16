@@ -60,8 +60,10 @@ module Torb
         begin
           event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
           events = event_ids.map do |event_id|
-            event = get_event(event_id)
-            event['sheets'].each { |sheet| sheet.delete('detail') }
+            event = get_event_for_get_events(event_id)
+            #event = get_event(event_id)
+            #event['sheets'].each { |sheet| sheet.delete('detail') }
+            #p event
             event
           end
           db.query('COMMIT')
@@ -72,6 +74,63 @@ module Torb
         events
       end
 
+
+      def get_event_for_get_events(event_id, login_user_id = nil)
+        event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
+        return unless event
+
+        # zero fill
+        event['total']   = 0
+        event['remains'] = 0
+        event['sheets'] = {}
+        %w[S A B C].each do |rank|
+          event['sheets'][rank] = { 'total' => 0, 'remains' => 0, 'detail' => [], 'price' => 0 }
+        end
+
+sql = <<SQL
+                               SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
+                               FROM sheets
+                               LEFT OUTER JOIN (
+                                  SELECT * 
+                                    FROM reservations 
+                                      WHERE event_id = ? 
+                                        AND canceled_at IS NULL 
+                                          GROUP BY event_id, sheet_id 
+                                            HAVING reserved_at = MIN(reserved_at)
+                               ) as r ON r.sheet_id = sheets.id
+                               ORDER BY sheets.rank 
+SQL
+        statement = db.prepare(sql.gsub("\n"," "))
+        result = statement.execute(event_id).to_a
+
+        p result.first
+        event['total'] = result.size
+        
+        event['remains'] = result.select { |row| row['reserved_at'].nil? }.size
+        %w[S A B C].each do |rank|
+          event['sheets'][rank] = {
+            'total' => result.select {|row| row['rank'] == rank}.size,
+            'remains' => result.select {|row| row['rank'] == rank && row['reserved_at'].nil? }.size,
+            'price' => event['price'] + result.select {|row| row['rank'] == rank}.first['price']
+          }
+        end
+      
+        event['public'] = event.delete('public_fg')
+        event['closed'] = event.delete('closed_fg')
+
+        event
+      end
+
+
+      # return:
+      # {
+      #   'title' => 'タイトル'
+      #   'total' =>
+      #   'remails' =>
+      #   'sheets' => {
+      #   }
+      # }
+      #
       def get_event(event_id, login_user_id = nil)
         event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
