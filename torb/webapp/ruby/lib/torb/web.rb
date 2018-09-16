@@ -123,9 +123,6 @@ SQL
           row.delete('id')
           row.delete('price')
           row.delete('user_id')
-          #binding.pry
-          #p row
-          #p event['sheets'][row['rank']]
           event['sheets'][row['rank']]['detail'] << row
         end
       
@@ -135,57 +132,6 @@ SQL
         %w[S A B C].each do |rank|
           event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
         end
-        event
-      end
-
-
-      # return:
-      # {
-      #   'title' => 'タイトル'
-      #   'total' =>
-      #   'remails' =>
-      #   'sheets' => {
-      #   }
-      # }
-      #
-      def get_event_old(event_id, login_user_id = nil)
-        event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
-        return unless event
-
-        # zero fill
-        event['total']   = 0
-        event['remains'] = 0
-        event['sheets'] = {}
-        %w[S A B C].each do |rank|
-          event['sheets'][rank] = { 'total' => 0, 'remains' => 0, 'detail' => [] }
-        end
-
-        sheets = db.query('SELECT * FROM sheets ORDER BY `rank`, num')
-        sheets.each do |sheet|
-          event['sheets'][sheet['rank']]['price'] ||= event['price'] + sheet['price']
-          event['total'] += 1
-          event['sheets'][sheet['rank']]['total'] += 1
-
-          reservation = db.xquery('SELECT * FROM reservations WHERE event_id = ? AND sheet_id = ? AND canceled_at IS NULL GROUP BY event_id, sheet_id HAVING reserved_at = MIN(reserved_at)', event['id'], sheet['id']).first
-          if reservation
-            sheet['mine']        = true if login_user_id && reservation['user_id'] == login_user_id
-            sheet['reserved']    = true
-            sheet['reserved_at'] = reservation['reserved_at'].to_i
-          else
-            event['remains'] += 1
-            event['sheets'][sheet['rank']]['remains'] += 1
-          end
-
-          event['sheets'][sheet['rank']]['detail'].push(sheet)
-
-          sheet.delete('id')
-          sheet.delete('price')
-          sheet.delete('rank')
-        end
-
-        event['public'] = event.delete('public_fg')
-        event['closed'] = event.delete('closed_fg')
-
         event
       end
 
