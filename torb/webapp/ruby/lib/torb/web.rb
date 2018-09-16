@@ -151,7 +151,6 @@ module Torb
         body << "\n"
         reports.each do |report|
           body << report
-          body << "\n"
         end
 
         headers({
@@ -440,7 +439,7 @@ module Torb
         ret << reservation['reserved_at'].iso8601
         ret << ","
         ret << a
-        ret
+        ret << "\n"
       end
 
       render_report_csv(reports)
@@ -466,7 +465,7 @@ module Torb
         ret << reservation['reserved_at'].iso8601
         ret << ","
         ret << a
-        ret
+        ret << "\n"
       end
 
       render_report_csv(reports)
