@@ -55,16 +55,16 @@ module Torb
       end
 
       def get_events(all: false)
-        event_ids = if all
+        events = if all
           db.query('SELECT * FROM events ORDER BY id ASC')
         else
           db.query('SELECT * FROM events WHERE public_fg = 1 ORDER BY id ASC')
-        end.map { |e| e['id'] }
+        end.to_a
 
-        events = event_ids.map do |event_id|
+        events = events.map do |event|
           #event = get_event_for_get_events(event_id)
           #binding.pry
-          event = get_event(event_id)
+          event = get_event(nil, event: event)
           event['sheets'].each { |sheet| sheet.delete('detail') }
           #p event
           event
@@ -74,9 +74,8 @@ module Torb
       end
 
 
-      def get_event(event_id, login_user_id = nil)
-      #def get_event_for_get_events(event_id, login_user_id = nil)
-        event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
+      def get_event(event_id, login_user_id = nil, event: nil)
+        event = event ? event : db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
 
         # zero fill
