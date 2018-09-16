@@ -57,7 +57,7 @@ module Torb
       def get_events(where = nil)
         where ||= ->(e) { e['public_fg'] }
 
-        event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
+        event_ids = db.query('SELECT id FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
         events = event_ids.map do |event_id|
           #event = get_event_for_get_events(event_id)
           #binding.pry
@@ -88,7 +88,7 @@ sql = <<SQL
                                SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
                                FROM sheets
                                LEFT OUTER JOIN (
-                                  SELECT * 
+                                  SELECT event_id, user_id, reserved_at, canceled_at 
                                     FROM reservations 
                                       WHERE event_id = ? 
                                         AND canceled_at IS NULL 
@@ -210,7 +210,7 @@ SQL
       end
 
       def validate_rank(rank)
-        db.xquery('SELECT COUNT(*) AS total_sheets FROM sheets WHERE `rank` = ?', rank).first['total_sheets'] > 0
+        db.xquery('SELECT COUNT(id) AS total_sheets FROM sheets WHERE `rank` = ?', rank).first['total_sheets'] > 0
       end
 
       def body_params
@@ -249,7 +249,7 @@ SQL
 
       db.query('BEGIN')
       begin
-        duplicated = db.xquery('SELECT * FROM users WHERE login_name = ?', login_name).first
+        duplicated = db.xquery('SELECT id FROM users WHERE login_name = ?', login_name).first
         if duplicated
           db.query('ROLLBACK')
           halt_with_error 409, 'duplicated'
