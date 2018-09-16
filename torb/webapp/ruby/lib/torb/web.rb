@@ -3,6 +3,7 @@ require 'sinatra/base'
 require 'erubi'
 require 'mysql2'
 require 'mysql2-cs-bind'
+require 'pry'
 
 module Torb
   class Web < Sinatra::Base
@@ -58,9 +59,10 @@ module Torb
 
         event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
         events = event_ids.map do |event_id|
-          event = get_event_for_get_events(event_id)
-          #event = get_event(event_id)
-          #event['sheets'].each { |sheet| sheet.delete('detail') }
+          #event = get_event_for_get_events(event_id)
+          #binding.pry
+          event = get_event(event_id)
+          event['sheets'].each { |sheet| sheet.delete('detail') }
           #p event
           event
         end
@@ -69,7 +71,8 @@ module Torb
       end
 
 
-      def get_event_for_get_events(event_id, login_user_id = nil)
+      def get_event(event_id, login_user_id = nil)
+      #def get_event_for_get_events(event_id, login_user_id = nil)
         event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
 
@@ -111,11 +114,18 @@ SQL
 
         result.each do |row|
           row['mine'] = login_user_id == row['user_id']
-          row['reserved'] = true
+          row['reserved'] = !row['reserved_at'].nil?
+          row['reserved_at'] = row['reserved_at']&.to_i
           
           # TODO: 全部消せてるかわからん
           row.delete('canceled_at')
           row.delete('event_id')
+          row.delete('id')
+          row.delete('price')
+          row.delete('user_id')
+          #binding.pry
+          #p row
+          #p event['sheets'][row['rank']]
           event['sheets'][row['rank']]['detail'] << row
         end
       
@@ -135,7 +145,7 @@ SQL
       #   }
       # }
       #
-      def get_event(event_id, login_user_id = nil)
+      def get_event_old(event_id, login_user_id = nil)
         event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
 
