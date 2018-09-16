@@ -1,0 +1,61 @@
+---
+- hosts: hosts
+  tasks:
+  - name: Load users configulation
+    include_vars: users.yml
+  - name: Create ~/.ssh directory
+    file:
+      path: ~/.ssh
+      mode: 0700
+      state: directory
+  - name: Append publickey into ~/.ssh/authorized_keys
+    lineinfile:
+      create: yes
+      dest: ~/.ssh/authorized_keys
+      mode: 0600
+      line: "{{ item.ssh_key }}"
+    with_items: "{{ users }}"
+  - name: Install dependencies
+    become: yes
+    become_user: root
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+    - git
+    - zsh
+    - dstat
+    - vim
+    - unzip
+    - zip
+    - tar
+    - gzip
+  - name: Install vim-gtk
+    become: yes
+    become_user: root
+    package:
+      name: vim-gtk
+      state: latest
+    ignore_errors: True
+  - name: Clone dotfiles into home directory
+    git:
+      repo: https://bitbucket.org/k5342/dotfiles.git
+      dest: ~/dotfiles
+      track_submodules: yes
+    ignore_errors: True
+  - name: Create symlinks for dotfiles
+    file:
+      src: "~/dotfiles/{{ item }}"
+      dest: "~/{{ item }}"
+      force: yes
+      state: link
+    with_items:
+    - .vimrc
+    - .vim
+    - .zshrc
+    ignore_errors: True
+  - name: Add users
+    become: yes
+    become_user: root
+    include: create_user.yml id={{ item.id }} ssh_key={{ item.ssh_key }}
+    with_items: "{{ users }}"
