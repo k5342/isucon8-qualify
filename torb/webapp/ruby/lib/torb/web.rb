@@ -483,29 +483,10 @@ SQL
 
       reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reservations.each do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << event['id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id'].to_s},#{event['id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{eservation['user_id']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
@@ -514,29 +495,10 @@ SQL
     get '/admin/api/reports/sales', admin_login_required: true do
       reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reports = reservations.map do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << reservation['event_id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id']},#{reservation['event_id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
