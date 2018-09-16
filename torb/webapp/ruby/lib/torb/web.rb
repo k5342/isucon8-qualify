@@ -54,10 +54,13 @@ module Torb
         )
       end
 
-      def get_events(where = nil)
-        where ||= ->(e) { e['public_fg'] }
+      def get_events(all: false)
+        event_ids = if all
+          db.query('SELECT * FROM events ORDER BY id ASC')
+        else
+          db.query('SELECT * FROM events WHERE public_fg = 1 ORDER BY id ASC')
+        end.map { |e| e['id'] }
 
-        event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
         events = event_ids.map do |event_id|
           #event = get_event_for_get_events(event_id)
           #binding.pry
@@ -406,7 +409,7 @@ SQL
 
     get '/admin/' do
       @administrator = get_login_administrator
-      @events = get_events(->(_) { true }) if @administrator
+      @events = get_events(all: true) if @administrator
 
       erb :admin
     end
@@ -431,7 +434,7 @@ SQL
     end
 
     get '/admin/api/events', admin_login_required: true do
-      events = get_events(->(_) { true })
+      events = get_events(all: true)
       events.to_json
     end
 
