@@ -3,7 +3,7 @@ require 'sinatra/base'
 require 'erubi'
 require 'mysql2'
 require 'mysql2-cs-bind'
-require 'pry'
+#require 'pry'
 
 module Torb
   class Web < Sinatra::Base
