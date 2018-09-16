@@ -58,10 +58,7 @@ module Torb
         where ||= ->(e) { e['public_fg'] }
 
         event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
-        events = get_events_from_ids(event_ids).map do |event|
-          event['sheets'].each { |sheet| sheet.delete('detail') }
-          event
-        end
+        events = get_events_from_ids(event_ids, without_detail: true)
 
         events
       end
@@ -134,7 +131,7 @@ SQL
       end
 
       
-      def get_events_from_ids(event_ids, login_user_id = nil, events: nil)
+      def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
         events = events ? events : db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
   
         # zero fill
@@ -183,32 +180,40 @@ SQL
             }    
         end
 
-        events.each do |event|
-          result = result_with_event_id[event['id']]
-
-          result.each do |row|
-            row['mine'] = login_user_id == row['user_id']
-            row['reserved'] = !row['reserved_at'].nil?
-            row['reserved_at'] = row['reserved_at']&.to_i
-
-            row.delete('canceled_at')
-            row.delete('event_id')
-            row.delete('id')
-            row.delete('price')
-            row.delete('user_id')
-            event['sheets'][row['rank']]['detail'] << row
+        if without_detail
+          events.each do |event|
+            %w[S A B C].each do |rank|
+              event['sheets'][rank].delete('detail')
+            end
+          end
+        else
+          events.each do |event|
+            result = result_with_event_id[event['id']]
+  
+            result.each do |row|
+              row['mine'] = login_user_id == row['user_id']
+              row['reserved'] = !row['reserved_at'].nil?
+              row['reserved_at'] = row['reserved_at']&.to_i
+  
+              row.delete('canceled_at')
+              row.delete('event_id')
+              row.delete('id')
+              row.delete('price')
+              row.delete('user_id')
+              event['sheets'][row['rank']]['detail'] << row
+            end
+          end
+  
+          events.each do |event|
+            %w[S A B C].each do |rank|
+              event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
+            end
           end
         end
-      
+
         events.each do |event|
           event['public'] = event.delete('public_fg')
           event['closed'] = event.delete('closed_fg')
-        end
-
-        events.each do |event|
-          %w[S A B C].each do |rank|
-            event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
-          end
         end
 
         event
@@ -322,12 +327,7 @@ SQL
       user['total_price'] = db.xquery('SELECT IFNULL(SUM(e.price + s.price), 0) AS total_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL', user['id']).first['total_price']
 
       rows = db.xquery('SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5', user['id'])
-      events = get_events_from_ids(rows.map {|row| row['event_id']})
-      recent_events = events.map do |event|
-        event['sheets'].each { |_, sheet| sheet.delete('detail') }
-        event
-      end
-      user['recent_events'] = recent_events
+      user['recent_events'] = get_events_from_ids(rows.map {|row| row['event_id']}, without_detail: true)
 
       user.to_json
     end
