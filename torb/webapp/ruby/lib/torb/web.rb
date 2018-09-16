@@ -101,6 +101,7 @@ sql = <<SQL
 SQL
         statement = db.prepare(sql.gsub("\n"," "))
         result = statement.execute(event_id).to_a
+        statement.close
 
         event['total'] = result.size
         
