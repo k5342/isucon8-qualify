@@ -58,12 +58,8 @@ module Torb
         where ||= ->(e) { e['public_fg'] }
 
         event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
-        events = event_ids.map do |event_id|
-          #event = get_event_for_get_events(event_id)
-          #binding.pry
-          event = get_event(event_id)
+        events = get_events_from_ids(event_ids).map do |event|
           event['sheets'].each { |sheet| sheet.delete('detail') }
-          #p event
           event
         end
 
@@ -304,8 +300,8 @@ SQL
       end
 
       rows = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
-      recent_reservations = rows.map do |row|
-        event = get_event(row['event_id'])
+      events = get_events_from_ids(rows.map {|row| row['event_id']})
+      recent_reservations = rows.zip(events).map do |row, event|
         price = event['sheets'][row['sheet_rank']]['price']
         event.delete('sheets')
         event.delete('total')
@@ -326,8 +322,8 @@ SQL
       user['total_price'] = db.xquery('SELECT IFNULL(SUM(e.price + s.price), 0) AS total_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL', user['id']).first['total_price']
 
       rows = db.xquery('SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5', user['id'])
-      recent_events = rows.map do |row|
-        event = get_event(row['event_id'])
+      events = get_events_from_ids(rows.map {|row| row['event_id']})
+      recent_events = events.map do |event|
         event['sheets'].each { |_, sheet| sheet.delete('detail') }
         event
       end
