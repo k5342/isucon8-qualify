@@ -198,22 +198,12 @@ SQL
         halt status, { error: error }.to_json
       end
 
-      def render_report_csv(reports)
-        reports = reports.sort_by { |report| report[:sold_at] }
-
-        keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-        body = keys.join(',')
-        body << "\n"
-        reports.each do |report|
-          body << report.values_at(*keys).join(',')
-          body << "\n"
-        end
-
+      def render_report_csv(reports_body)
         headers({
           'Content-Type'        => 'text/csv; charset=UTF-8',
           'Content-Disposition' => 'attachment; filename="report.csv"',
         })
-        body
+        reports_body
       end
     end
 
@@ -477,38 +467,64 @@ SQL
       event = get_event(event_id)
 
       reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
-      reports = reservations.map do |reservation|
-        {
-          reservation_id: reservation['id'],
-          event_id:       event['id'],
-          rank:           reservation['sheet_rank'],
-          num:            reservation['sheet_num'],
-          user_id:        reservation['user_id'],
-          sold_at:        reservation['reserved_at'].iso8601,
-          canceled_at:    reservation['canceled_at']&.iso8601 || '',
-          price:          reservation['event_price'] + reservation['sheet_price'],
-        }
+      keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
+      body = keys.join(',')
+      body << "\n"
+
+      reports = reservations.each do |reservation|
+        a = reservation['canceled_at']&.iso8601 || ''
+        ret = ""
+        ret << reservation['id'].to_s
+        ret << ','
+        ret << event['id'].to_s
+        ret << ","
+        ret << reservation['sheet_rank'].to_s
+        ret << ","
+        ret << reservation['sheet_num'].to_s
+        ret << ","
+        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
+        ret << ","
+        ret << reservation['user_id'].to_s
+        ret << ","
+        ret << reservation['reserved_at'].iso8601
+        ret << ","
+        ret << a
+        ret << "\n"
+        body << ret
       end
 
-      render_report_csv(reports)
+      render_report_csv(body)
     end
 
     get '/admin/api/reports/sales', admin_login_required: true do
       reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
+      keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
+      body = keys.join(',')
+      body << "\n"
+
       reports = reservations.map do |reservation|
-        {
-          reservation_id: reservation['id'],
-          event_id:       reservation['event_id'],
-          rank:           reservation['sheet_rank'],
-          num:            reservation['sheet_num'],
-          user_id:        reservation['user_id'],
-          sold_at:        reservation['reserved_at'].iso8601,
-          canceled_at:    reservation['canceled_at']&.iso8601 || '',
-          price:          reservation['event_price'] + reservation['sheet_price'],
-        }
+        a = reservation['canceled_at']&.iso8601 || ''
+        ret = ""
+        ret << reservation['id'].to_s
+        ret << ','
+        ret << reservation['event_id'].to_s
+        ret << ","
+        ret << reservation['sheet_rank'].to_s
+        ret << ","
+        ret << reservation['sheet_num'].to_s
+        ret << ","
+        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
+        ret << ","
+        ret << reservation['user_id'].to_s
+        ret << ","
+        ret << reservation['reserved_at'].iso8601
+        ret << ","
+        ret << a
+        ret << "\n"
+        body << ret
       end
 
-      render_report_csv(reports)
+      render_report_csv(body)
     end
   end
 end
