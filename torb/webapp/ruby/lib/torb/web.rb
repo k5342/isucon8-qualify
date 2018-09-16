@@ -103,11 +103,13 @@ SQL
         event['total'] = result.size
         
         event['remains'] = result.select { |row| row['reserved_at'].nil? }.size
+
+        result_with_rank = result.group_by {|row| row['rank'] }
         %w[S A B C].each do |rank|
           event['sheets'][rank] = {
-            'total' => result.select {|row| row['rank'] == rank}.size,
-            'remains' => result.select {|row| row['rank'] == rank && row['reserved_at'].nil? }.size,
-            'price' => event['price'] + result.select {|row| row['rank'] == rank}.first['price'],
+            'total' => result_with_rank[rank].size,
+            'remains' => result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size,
+            'price' => event['price'] + rresult_with_rank[rank].first['price'],
             'detail' => []
           }
         end
