@@ -138,8 +138,8 @@ SQL
       end
 
       
-      def get_events_from_ids(event_ids, login_user_id = nil)
-        events = db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
+      def get_events_from_ids(event_ids, login_user_id = nil, events: nil)
+        events = events ? events : db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
   
         # zero fill
         events.each do |event|
