@@ -85,17 +85,17 @@ module Torb
         end
 
 sql = <<SQL
-                               SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
-                               FROM sheets
-                               LEFT OUTER JOIN (
-                                  SELECT * 
-                                    FROM reservations 
-                                      WHERE event_id = ? 
-                                        AND canceled_at IS NULL 
-                                          GROUP BY event_id, sheet_id 
-                                            HAVING reserved_at = MIN(reserved_at)
-                               ) as r ON r.sheet_id = sheets.id
-                               ORDER BY sheets.rank 
+SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
+FROM sheets
+LEFT OUTER JOIN (
+  SELECT * 
+  FROM reservations 
+  WHERE event_id = ? 
+  AND canceled_at IS NULL 
+  GROUP BY event_id, sheet_id 
+  HAVING reserved_at = MIN(reserved_at)
+) as r ON r.sheet_id = sheets.id
+ORDER BY sheets.rank
 SQL
         statement = db.prepare(sql.gsub("\n"," "))
         result = statement.execute(event_id).to_a
