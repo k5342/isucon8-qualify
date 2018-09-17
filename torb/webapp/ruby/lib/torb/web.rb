@@ -157,9 +157,7 @@ LEFT OUTER JOIN (
 ) as r ON r.sheet_id = sheets.id
 ORDER BY sheets.rank
 SQL
-        statement = db.prepare(sql.gsub("\n"," "))
-        result_with_event_id = statement.execute(event_id).to_a.group_by {|row| row['event_id']}
-        statement.close
+        result_with_event_id = db.query(sql.gsub("\n"," ")).to_a.group_by {|row| row['event_id']}
 
         events.each do |event|
           event['total'] = result_with_event_id[event['id']].size
