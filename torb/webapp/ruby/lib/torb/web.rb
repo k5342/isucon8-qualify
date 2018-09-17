@@ -527,10 +527,13 @@ SELECT
 	s.num AS sheet_num, 
 	s.price AS sheet_price, 
 	e.price AS event_price 
-FROM reservations r 
+FROM (
+	SELECT *
+	FROM reservations
+	WHERE event_id = ?
+) r 
 INNER JOIN sheets s ON s.id = r.sheet_id 
 INNER JOIN events e ON e.id = r.event_id 
-WHERE r.event_id = ? 
 ORDER BY reserved_at ASC 
 FOR UPDATE
 SQL
