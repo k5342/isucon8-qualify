@@ -520,7 +520,21 @@ SQL
     end
 
     get '/admin/api/reports/sales', admin_login_required: true do
-      reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
+sql = <<SQL
+SELECT 
+	r.*, 
+	s.rank AS sheet_rank, 
+	s.num AS sheet_num, 
+	s.price AS sheet_price, 
+	e.price AS event_price 
+FROM reservations r 
+INNER JOIN sheets s ON s.id = r.sheet_id 
+INNER JOIN events e ON e.id = r.event_id 
+WHERE r.event_id = ? 
+ORDER BY reserved_at ASC 
+FOR UPDATE
+SQL
+      reservations = db.query(sql.gsub("\n", " "))
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
       body = keys.join(',')
       body << "\n"
