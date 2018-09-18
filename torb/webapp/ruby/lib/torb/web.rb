@@ -165,22 +165,21 @@ LEFT OUTER JOIN (
 ORDER BY sheets.rank
 SQL
         result_with_event_id = db.query(sql.gsub("\n"," ")).to_a.group_by {|row| row['event_id']}
-
         events.each do |event|
-          event['total'] = result_with_event_id[event['id']].size
+          event['total'] = 1000
         end
         
         events.each do |event|
-          event['remains'] = result_with_event_id[event['id']].select { |row| row['reserved_at'].nil? }.size
+          event['remains'] = (result_with_event_id[event['id']] || {}).select { |row| row['reserved_at'].nil? }.size
         end
 
         events.each do |event|
-          result_with_rank = result_with_event_id[event['id']].group_by {|row| row['rank'] }  
+          result_with_rank = (result_with_event_id[event['id']] || {}).group_by {|row| row['rank'] }  
           %w[S A B C].each do |rank|
             event['sheets'][rank] = {
-              'total' => result_with_rank[rank].size,
-              'remains' => result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size,
-              'price' => event['price'] + result_with_rank[rank].first['price'],
+              'total' => rank_to_count(rank),
+              'remains' => result_with_rank[rank] ? result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size : rank_to_count(rank),
+              'price' => event['price'] + rank_to_price(rank),
               'detail' => []
             }
           end
@@ -223,6 +222,32 @@ SQL
         end
 
         events
+      end
+
+      def rank_to_count(rank)
+        case rank
+        when "S" 
+          50
+        when "A" 
+          150
+        when "B" 
+          300
+        when "C" 
+          500
+        end
+      end
+
+      def rank_to_price(rank)
+        case rank
+        when "S"
+          5000
+        when "A"
+          3000
+        when "B"
+          1000
+        when "C"
+          0
+        end
       end
 
       def sanitize_event(event)
