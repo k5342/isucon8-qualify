@@ -221,7 +221,7 @@ SQL
           event['closed'] = event.delete('closed_fg')
         end
 
-        event
+        events
       end
 
       def sanitize_event(event)
@@ -536,3 +536,4 @@ SQL
     end
   end
 end
+
