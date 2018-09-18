@@ -137,7 +137,7 @@ SQL
 
       
       def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
-        events = events ? events : db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
+        events ||= db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
 
         event_ids ||= events.map {|row| row['id']}
   
