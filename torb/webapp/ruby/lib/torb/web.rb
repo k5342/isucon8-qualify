@@ -157,7 +157,7 @@ FROM sheets
 LEFT OUTER JOIN (
   SELECT * 
   FROM reservations 
-  WHERE event_id IN ("#{event_ids.join(", ")}")
+  WHERE event_id IN (#{event_ids.join(", ")})
   AND canceled_at IS NULL 
   GROUP BY event_id, sheet_id 
   HAVING reserved_at = MIN(reserved_at)
