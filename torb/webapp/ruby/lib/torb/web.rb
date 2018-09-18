@@ -3,7 +3,7 @@ require 'sinatra/base'
 require 'erubi'
 require 'mysql2'
 require 'mysql2-cs-bind'
-#require 'pry'
+require 'pry'
 
 module Torb
   class Web < Sinatra::Base
@@ -147,7 +147,7 @@ SQL
           event['remains'] = 0
           event['sheets'] = {}
           %w[S A B C].each do |rank|
-            event['sheets'][rank] = { 'total' => 0, 'remains' => 0, 'detail' => [], 'price' => 0 }
+            event['sheets'][rank] = { 'total' => rank_to_count(rank), 'remains' => 0, 'detail' => [], 'price' => 0 }
           end
         end
   
@@ -170,7 +170,7 @@ SQL
         end
         
         events.each do |event|
-          event['remains'] = (result_with_event_id[event['id']] || {}).select { |row| row['reserved_at'].nil? }.size
+          event['remains'] = 1000 - (result_with_event_id[event['id']] || {}).select { |row| row['reserved_at'] }.size
         end
 
         events.each do |event|
@@ -178,7 +178,7 @@ SQL
           %w[S A B C].each do |rank|
             event['sheets'][rank] = {
               'total' => rank_to_count(rank),
-              'remains' => result_with_rank[rank] ? result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size : rank_to_count(rank),
+              'remains' => rank_to_count(rank) - (result_with_rank[rank] || {}).select {|row| row['reserved_at'] }.size,
               'price' => event['price'] + rank_to_price(rank),
               'detail' => []
             }
