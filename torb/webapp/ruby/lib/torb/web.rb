@@ -182,7 +182,8 @@ SQL
               'remains' => result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size,
               'price' => event['price'] + result_with_rank[rank].first['price'],
               'detail' => []
-            }    
+            }
+          end
         end
 
         if without_detail
@@ -536,4 +537,3 @@ SQL
     end
   end
 end
-
