@@ -147,15 +147,13 @@ SQL
       end
 
       def get_login_user
-        user_id = session[:user_id]
-        return unless user_id
-        db.xquery('SELECT id, nickname FROM users WHERE id = ?', user_id).first
+        return unless session[:user_id]
+        db.xquery('SELECT id, nickname FROM users WHERE id = ?', session[:user_id]).first
       end
 
       def get_login_administrator
-        administrator_id = session['administrator_id']
-        return unless administrator_id
-        db.xquery('SELECT id, nickname FROM administrators WHERE id = ?', administrator_id).first
+        return unless session['administrator_id']
+        db.xquery('SELECT id, nickname FROM administrators WHERE id = ?', session['administrator_id']).first
       end
 
       def validate_rank(rank)
@@ -246,12 +244,11 @@ SQL
       user['total_price'] = db.xquery('SELECT IFNULL(SUM(e.price + s.price), 0) AS total_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL', user['id']).first['total_price']
 
       rows = db.xquery('SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5', user['id'])
-      recent_events = rows.map do |row|
+      user['recent_events'] = rows.map do |row|
         event = get_event(row['event_id'])
         event['sheets'].each { |_, sheet| sheet.delete('detail') }
         event
       end
-      user['recent_events'] = recent_events
 
       user.to_json
     end
@@ -277,8 +274,7 @@ SQL
     end
 
     get '/api/events' do
-      events = get_events.map(&method(:sanitize_event))
-      events.to_json
+      get_events.map(&method(:sanitize_event)).to_json
     end
 
     get '/api/events/:id' do |event_id|
@@ -286,8 +282,7 @@ SQL
       event = get_event(event_id, user['id'])
       halt_with_error 404, 'not_found' if event.nil? || !event['public']
 
-      event = sanitize_event(event)
-      event.to_json
+      sanitize_event(event).to_json
     end
 
     post '/api/events/:id/actions/reserve', login_required: true do |event_id|
@@ -318,7 +313,7 @@ SQL
       end
 
       status 202
-      { id: reservation_id, sheet_rank: rank, sheet_num: sheet['num'] } .to_json
+      { id: reservation_id, sheet_rank: rank, sheet_num: sheet['num'] }.to_json
     end
 
     delete '/api/events/:id/sheets/:rank/:num/reservation', login_required: true do |event_id, rank, num|
@@ -370,8 +365,7 @@ SQL
 
       session['administrator_id'] = administrator['id']
 
-      administrator = get_login_administrator
-      administrator.to_json
+      get_login_administrator.to_json
     end
 
     post '/admin/api/actions/logout', admin_login_required: true do
@@ -398,8 +392,7 @@ SQL
         db.query('ROLLBACK')
       end
 
-      event = get_event(event_id)
-      event&.to_json
+      get_event(event_id)&.to_json
     end
 
     get '/admin/api/events/:id', admin_login_required: true do |event_id|
@@ -431,8 +424,7 @@ SQL
         db.query('ROLLBACK')
       end
 
-      event = get_event(event_id)
-      event.to_json
+      get_event(event_id).to_json
     end
 
     get '/admin/api/reports/events/:id/sales', admin_login_required: true do |event_id|
@@ -440,29 +432,10 @@ SQL
 
       reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reservations.each do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << event['id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id'].to_s},#{event['id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
@@ -471,29 +444,10 @@ SQL
     get '/admin/api/reports/sales', admin_login_required: true do
       reservations = db.query('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.id AS event_id, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id ORDER BY reserved_at ASC FOR UPDATE')
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reports = reservations.map do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << reservation['event_id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id']},#{reservation['event_id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
