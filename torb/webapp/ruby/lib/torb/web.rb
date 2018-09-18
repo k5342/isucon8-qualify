@@ -75,7 +75,7 @@ module Torb
 
 
       def get_event(event_id, login_user_id = nil, event: nil)
-        event = event ? event : db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
+        event ||= db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
 
         # zero fill
@@ -182,6 +182,7 @@ SQL
     get '/' do
       @user   = get_login_user
       @events = get_events.map(&method(:sanitize_event))
+      p @events
       erb :index
     end
 
