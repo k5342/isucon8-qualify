@@ -487,7 +487,7 @@ SQL
       body = keys.join(',') << "\n"
 
       reservations.each do |reservation|
-        body << "#{reservation['id'].to_s},#{event['id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
+        body << "#{reservation['id'].to_s},#{event['id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
