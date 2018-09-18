@@ -61,7 +61,7 @@ module Torb
           db.query('SELECT * FROM events WHERE public_fg = 1 ORDER BY id ASC')
         end.to_a
 
-        events = get_events_from_ids(event_ids.map {|row| row['id']}, without_detail: true)
+        events = get_events_from_ids(nil, events: events, without_detail: true)
 
         events
       end
@@ -138,6 +138,8 @@ SQL
       
       def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
         events = events ? events : db.xquery("SELECT * FROM events WHERE IN (#{event_ids.join(", ")}")
+
+        event_ids ||= events.map {|row| row['id']}
   
         # zero fill
         events.each do |event|
