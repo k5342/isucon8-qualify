@@ -62,11 +62,8 @@ module Torb
         end.to_a
 
         events = events.map do |event|
-          #event = get_event_for_get_events(event_id)
-          #binding.pry
           event = get_event(nil, event: event)
           event['sheets'].each { |sheet| sheet.delete('detail') }
-          #p event
           event
         end
 
@@ -77,6 +74,8 @@ module Torb
       def get_event(event_id, login_user_id = nil, event: nil)
         event ||= db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
+
+        event_id ||= event['id']
 
         # zero fill
         event['total']   = 0
@@ -182,7 +181,6 @@ SQL
     get '/' do
       @user   = get_login_user
       @events = get_events.map(&method(:sanitize_event))
-      p @events
       erb :index
     end
 
