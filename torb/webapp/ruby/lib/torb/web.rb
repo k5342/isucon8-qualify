@@ -566,7 +566,7 @@ FROM (
 	SELECT *
 	FROM reservations
 	WHERE event_id = ?
-) r 
+) AS r 
 INNER JOIN sheets s ON s.id = r.sheet_id 
 INNER JOIN events e ON e.id = r.event_id 
 ORDER BY reserved_at ASC 
