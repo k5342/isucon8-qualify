@@ -562,17 +562,13 @@ SELECT
 	s.num AS sheet_num, 
 	s.price AS sheet_price, 
 	e.price AS event_price 
-FROM (
-	SELECT *
-	FROM reservations
-	WHERE event_id = ?
-) AS r 
+FROM reservations AS r 
 INNER JOIN sheets s ON s.id = r.sheet_id 
 INNER JOIN events e ON e.id = r.event_id 
 ORDER BY reserved_at ASC 
 FOR UPDATE
 SQL
-      reservations = db.query(sql.gsub("\n", " "))
+      reservations = db.xquery(sql.gsub("\n", " "), )
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
       body = keys.join(',') << "\n"
 
