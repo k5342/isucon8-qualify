@@ -334,8 +334,9 @@ SQL
       end
 
       rows = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
-      events = get_events_from_ids(rows.map {|row| row['event_id']})
-      recent_reservations = rows.zip(events).map do |row, event|
+      events_with_id = get_events_from_ids(rows.map {|row| row['event_id']}.uniq).group_by {|row| row['id']}
+      recent_reservations = rows.map do |row|
+        event = events_with_id[row['event_id']].first
         price = event['sheets'][row['sheet_rank']]['price']
         event.delete('sheets')
         event.delete('total')
