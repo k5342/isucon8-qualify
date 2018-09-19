@@ -137,9 +137,7 @@ SQL
 
       
       def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
-        unless event_ids.nil?
-          events ||= db.xquery("SELECT * FROM events WHERE id IN (#{event_ids.join(", ")}) ORDER BY FIELD(id,#{event_ids.join(", ")})").to_a
-        end
+        events ||= db.xquery("SELECT * FROM events WHERE id IN (#{event_ids.join(", ")}) ORDER BY FIELD(id,#{event_ids.join(", ")})").to_a unless event_ids.nil?
 
         event_ids ||= events.map {|row| row['id']}
   
@@ -320,7 +318,7 @@ SQL
         user_id = db.last_id
         db.query('COMMIT')
       rescue => e
-        warn "rollback by: #{e}"
+        warn "#{__LINE__} : rollback by: #{e}"
         db.query('ROLLBACK')
         halt_with_error
       end
@@ -336,7 +334,7 @@ SQL
       end
 
       rows = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
-      events_with_id = get_events_from_ids(rows.map {|row| row['event_id']}.uniq).group_by {|row| row['id']}
+      events_with_id = get_events_from_ids(rows.map {|row| row['event_id']}.uniq, without_detail: true).group_by {|row| row['id']}
       recent_reservations = rows.map do |row|
         event = events_with_id[row['event_id']].first
         price = event['price'] + rank_to_price(row['sheet_rank'])
@@ -416,7 +414,7 @@ SQL
           db.query('COMMIT')
         rescue => e
           db.query('ROLLBACK')
-          warn "re-try: rollback by #{e}"
+          warn "#{__LINE__} : re-try: rollback by #{e}"
           next
         end
 
@@ -541,7 +539,7 @@ SQL
     get '/admin/api/reports/events/:id/sales', admin_login_required: true do |event_id|
       event = get_event(event_id)
 
-      reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
+      reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC', event['id'])
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
       body = keys.join(',') << "\n"
 
