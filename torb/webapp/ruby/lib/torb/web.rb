@@ -3,7 +3,7 @@ require 'sinatra/base'
 require 'erubi'
 require 'mysql2'
 require 'mysql2-cs-bind'
-#require 'pry'
+require 'pry'
 
 module Torb
   class Web < Sinatra::Base
@@ -54,27 +54,24 @@ module Torb
         )
       end
 
-      def get_events(where = nil)
-        where ||= ->(e) { e['public_fg'] }
+      def get_events(all: false)
+        events = if all
+          db.query('SELECT * FROM events ORDER BY id ASC')
+        else
+          db.query('SELECT * FROM events WHERE public_fg = 1 ORDER BY id ASC')
+        end.to_a
 
-        event_ids = db.query('SELECT * FROM events ORDER BY id ASC').select(&where).map { |e| e['id'] }
-        events = event_ids.map do |event_id|
-          #event = get_event_for_get_events(event_id)
-          #binding.pry
-          event = get_event(event_id)
-          event['sheets'].each { |sheet| sheet.delete('detail') }
-          #p event
-          event
-        end
+        events = get_events_from_ids(nil, events: events, without_detail: true)
 
         events
       end
 
 
-      def get_event(event_id, login_user_id = nil)
-      #def get_event_for_get_events(event_id, login_user_id = nil)
-        event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
+      def get_event(event_id, login_user_id = nil, event: nil)
+        event ||= db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
         return unless event
+
+        event_id ||= event['id']
 
         # zero fill
         event['total']   = 0
@@ -85,29 +82,32 @@ module Torb
         end
 
 sql = <<SQL
-                               SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
-                               FROM sheets
-                               LEFT OUTER JOIN (
-                                  SELECT * 
-                                    FROM reservations 
-                                      WHERE event_id = ? 
-                                        AND canceled_at IS NULL 
-                                          GROUP BY event_id, sheet_id 
-                                            HAVING reserved_at = MIN(reserved_at)
-                               ) as r ON r.sheet_id = sheets.id
-                               ORDER BY sheets.rank 
+SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
+FROM sheets
+LEFT OUTER JOIN (
+  SELECT * 
+  FROM reservations 
+  WHERE event_id = ? 
+  AND canceled_at IS NULL 
+  GROUP BY event_id, sheet_id 
+  HAVING reserved_at = MIN(reserved_at)
+) as r ON r.sheet_id = sheets.id
+ORDER BY sheets.rank
 SQL
         statement = db.prepare(sql.gsub("\n"," "))
         result = statement.execute(event_id).to_a
+        statement.close
 
         event['total'] = result.size
         
         event['remains'] = result.select { |row| row['reserved_at'].nil? }.size
+
+        result_with_rank = result.group_by {|row| row['rank'] }
         %w[S A B C].each do |rank|
           event['sheets'][rank] = {
-            'total' => result.select {|row| row['rank'] == rank}.size,
-            'remains' => result.select {|row| row['rank'] == rank && row['reserved_at'].nil? }.size,
-            'price' => event['price'] + result.select {|row| row['rank'] == rank}.first['price'],
+            'total' => result_with_rank[rank].size,
+            'remains' => result_with_rank[rank].select {|row| row['reserved_at'].nil? }.size,
+            'price' => event['price'] + result_with_rank[rank].first['price'],
             'detail' => []
           }
         end
@@ -123,9 +123,6 @@ SQL
           row.delete('id')
           row.delete('price')
           row.delete('user_id')
-          #binding.pry
-          #p row
-          #p event['sheets'][row['rank']]
           event['sheets'][row['rank']]['detail'] << row
         end
       
@@ -138,55 +135,119 @@ SQL
         event
       end
 
+      
+      def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
+        events ||= db.xquery("SELECT * FROM events WHERE id IN (#{event_ids.join(", ")}) ORDER BY FIELD(id,#{event_ids.join(", ")})").to_a unless event_ids.nil?
 
-      # return:
-      # {
-      #   'title' => 'タイトル'
-      #   'total' =>
-      #   'remails' =>
-      #   'sheets' => {
-      #   }
-      # }
-      #
-      def get_event_old(event_id, login_user_id = nil)
-        event = db.xquery('SELECT * FROM events WHERE id = ?', event_id).first
-        return unless event
-
+        event_ids ||= events.map {|row| row['id']}
+  
         # zero fill
-        event['total']   = 0
-        event['remains'] = 0
-        event['sheets'] = {}
-        %w[S A B C].each do |rank|
-          event['sheets'][rank] = { 'total' => 0, 'remains' => 0, 'detail' => [] }
-        end
-
-        sheets = db.query('SELECT * FROM sheets ORDER BY `rank`, num')
-        sheets.each do |sheet|
-          event['sheets'][sheet['rank']]['price'] ||= event['price'] + sheet['price']
-          event['total'] += 1
-          event['sheets'][sheet['rank']]['total'] += 1
-
-          reservation = db.xquery('SELECT * FROM reservations WHERE event_id = ? AND sheet_id = ? AND canceled_at IS NULL GROUP BY event_id, sheet_id HAVING reserved_at = MIN(reserved_at)', event['id'], sheet['id']).first
-          if reservation
-            sheet['mine']        = true if login_user_id && reservation['user_id'] == login_user_id
-            sheet['reserved']    = true
-            sheet['reserved_at'] = reservation['reserved_at'].to_i
-          else
-            event['remains'] += 1
-            event['sheets'][sheet['rank']]['remains'] += 1
+        events.each do |event|
+          event['total']   = 0
+          event['remains'] = 0
+          event['sheets'] = {}
+          %w[S A B C].each do |rank|
+            event['sheets'][rank] = { 'total' => rank_to_count(rank), 'remains' => 0, 'detail' => [], 'price' => 0 }
           end
-
-          event['sheets'][sheet['rank']]['detail'].push(sheet)
-
-          sheet.delete('id')
-          sheet.delete('price')
-          sheet.delete('rank')
+        end
+  
+sql = <<SQL
+SELECT sheets.*, r.event_id, r.user_id, r.reserved_at, r.canceled_at
+FROM sheets
+LEFT OUTER JOIN (
+  SELECT * 
+  FROM reservations 
+  WHERE event_id IN (#{event_ids.join(", ")})
+  AND canceled_at IS NULL 
+  GROUP BY event_id, sheet_id 
+  HAVING reserved_at = MIN(reserved_at)
+) as r ON r.sheet_id = sheets.id
+ORDER BY sheets.rank
+SQL
+        result_with_event_id = db.query(sql.gsub("\n"," ")).to_a.group_by {|row| row['event_id']}
+        events.each do |event|
+          event['total'] = 1000
+        end
+        
+        events.each do |event|
+          event['remains'] = 1000 - (result_with_event_id[event['id']] || {}).select { |row| row['reserved_at'] }.size
         end
 
-        event['public'] = event.delete('public_fg')
-        event['closed'] = event.delete('closed_fg')
+        events.each do |event|
+          result_with_rank = (result_with_event_id[event['id']] || {}).group_by {|row| row['rank'] }  
+          %w[S A B C].each do |rank|
+            event['sheets'][rank] = {
+              'total' => rank_to_count(rank),
+              'remains' => rank_to_count(rank) - (result_with_rank[rank] || {}).select {|row| row['reserved_at'] }.size,
+              'price' => event['price'] + rank_to_price(rank),
+              'detail' => []
+            }
+          end
+        end
 
-        event
+        if without_detail
+          events.each do |event|
+            %w[S A B C].each do |rank|
+              event['sheets'][rank].delete('detail')
+            end
+          end
+        else
+          events.each do |event|
+            result = result_with_event_id[event['id']]
+  
+            result.each do |row|
+              row['mine'] = login_user_id == row['user_id']
+              row['reserved'] = !row['reserved_at'].nil?
+              row['reserved_at'] = row['reserved_at']&.to_i
+  
+              row.delete('canceled_at')
+              row.delete('event_id')
+              row.delete('id')
+              #row.delete('price')
+              row.delete('user_id')
+              event['sheets'][row['rank']]['detail'] << row
+            end
+          end
+  
+          events.each do |event|
+            %w[S A B C].each do |rank|
+              event['sheets'][rank]['detail'].sort_by!{|x| x['num']}
+            end
+          end
+        end
+
+        events.each do |event|
+          event['public'] = event.delete('public_fg')
+          event['closed'] = event.delete('closed_fg')
+        end
+
+        events
+      end
+
+      def rank_to_count(rank)
+        case rank
+        when "S" 
+          50
+        when "A" 
+          150
+        when "B" 
+          300
+        when "C" 
+          500
+        end
+      end
+
+      def rank_to_price(rank)
+        case rank
+        when "S"
+          5000
+        when "A"
+          3000
+        when "B"
+          1000
+        when "C"
+          0
+        end
       end
 
       def sanitize_event(event)
@@ -198,15 +259,13 @@ SQL
       end
 
       def get_login_user
-        user_id = session[:user_id]
-        return unless user_id
-        db.xquery('SELECT id, nickname FROM users WHERE id = ?', user_id).first
+        return unless session[:user_id]
+        db.xquery('SELECT id, nickname FROM users WHERE id = ?', session[:user_id]).first
       end
 
       def get_login_administrator
-        administrator_id = session['administrator_id']
-        return unless administrator_id
-        db.xquery('SELECT id, nickname FROM administrators WHERE id = ?', administrator_id).first
+        return unless session['administrator_id']
+        db.xquery('SELECT id, nickname FROM administrators WHERE id = ?', session['administrator_id']).first
       end
 
       def validate_rank(rank)
@@ -259,7 +318,7 @@ SQL
         user_id = db.last_id
         db.query('COMMIT')
       rescue => e
-        warn "rollback by: #{e}"
+        warn "#{__LINE__} : rollback by: #{e}"
         db.query('ROLLBACK')
         halt_with_error
       end
@@ -275,9 +334,10 @@ SQL
       end
 
       rows = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id WHERE r.user_id = ? ORDER BY IFNULL(r.canceled_at, r.reserved_at) DESC LIMIT 5', user['id'])
+      events_with_id = get_events_from_ids(rows.map {|row| row['event_id']}.uniq, without_detail: true).group_by {|row| row['id']}
       recent_reservations = rows.map do |row|
-        event = get_event(row['event_id'])
-        price = event['sheets'][row['sheet_rank']]['price']
+        event = events_with_id[row['event_id']].first
+        price = event['price'] + rank_to_price(row['sheet_rank'])
         event.delete('sheets')
         event.delete('total')
         event.delete('remains')
@@ -297,12 +357,7 @@ SQL
       user['total_price'] = db.xquery('SELECT IFNULL(SUM(e.price + s.price), 0) AS total_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.user_id = ? AND r.canceled_at IS NULL', user['id']).first['total_price']
 
       rows = db.xquery('SELECT event_id FROM reservations WHERE user_id = ? GROUP BY event_id ORDER BY MAX(IFNULL(canceled_at, reserved_at)) DESC LIMIT 5', user['id'])
-      recent_events = rows.map do |row|
-        event = get_event(row['event_id'])
-        event['sheets'].each { |_, sheet| sheet.delete('detail') }
-        event
-      end
-      user['recent_events'] = recent_events
+      user['recent_events'] = get_events_from_ids(rows.map {|row| row['event_id']}, without_detail: true)
 
       user.to_json
     end
@@ -328,8 +383,7 @@ SQL
     end
 
     get '/api/events' do
-      events = get_events.map(&method(:sanitize_event))
-      events.to_json
+      get_events.map(&method(:sanitize_event)).to_json
     end
 
     get '/api/events/:id' do |event_id|
@@ -337,8 +391,7 @@ SQL
       event = get_event(event_id, user['id'])
       halt_with_error 404, 'not_found' if event.nil? || !event['public']
 
-      event = sanitize_event(event)
-      event.to_json
+      sanitize_event(event).to_json
     end
 
     post '/api/events/:id/actions/reserve', login_required: true do |event_id|
@@ -352,16 +405,20 @@ SQL
       sheet = nil
       reservation_id = nil
       loop do
-        sheet = db.xquery('SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1', event['id'], rank).first
-        halt_with_error 409, 'sold_out' unless sheet
         db.query('BEGIN')
+        sheet = db.xquery('SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1', event['id'], rank).first
+        unless sheet
+          db.query('COMMIT')
+          halt_with_error 409, 'sold_out' unless sheeta
+        end
+        #db.query('BEGIN')
         begin
           db.xquery('INSERT INTO reservations (event_id, sheet_id, user_id, reserved_at) VALUES (?, ?, ?, ?)', event['id'], sheet['id'], user['id'], Time.now.utc.strftime('%F %T.%6N'))
           reservation_id = db.last_id
           db.query('COMMIT')
         rescue => e
           db.query('ROLLBACK')
-          warn "re-try: rollback by #{e}"
+          warn "#{__LINE__} : re-try: rollback by #{e}"
           next
         end
 
@@ -369,7 +426,7 @@ SQL
       end
 
       status 202
-      { id: reservation_id, sheet_rank: rank, sheet_num: sheet['num'] } .to_json
+      { id: reservation_id, sheet_rank: rank, sheet_num: sheet['num'] }.to_json
     end
 
     delete '/api/events/:id/sheets/:rank/:num/reservation', login_required: true do |event_id, rank, num|
@@ -406,7 +463,7 @@ SQL
 
     get '/admin/' do
       @administrator = get_login_administrator
-      @events = get_events(->(_) { true }) if @administrator
+      @events = get_events(all: true) if @administrator
 
       erb :admin
     end
@@ -421,8 +478,7 @@ SQL
 
       session['administrator_id'] = administrator['id']
 
-      administrator = get_login_administrator
-      administrator.to_json
+      get_login_administrator.to_json
     end
 
     post '/admin/api/actions/logout', admin_login_required: true do
@@ -431,7 +487,7 @@ SQL
     end
 
     get '/admin/api/events', admin_login_required: true do
-      events = get_events(->(_) { true })
+      events = get_events(all: true)
       events.to_json
     end
 
@@ -449,8 +505,7 @@ SQL
         db.query('ROLLBACK')
       end
 
-      event = get_event(event_id)
-      event&.to_json
+      get_event(event_id)&.to_json
     end
 
     get '/admin/api/events/:id', admin_login_required: true do |event_id|
@@ -482,38 +537,18 @@ SQL
         db.query('ROLLBACK')
       end
 
-      event = get_event(event_id)
-      event.to_json
+      get_event(event_id).to_json
     end
 
     get '/admin/api/reports/events/:id/sales', admin_login_required: true do |event_id|
       event = get_event(event_id)
 
-      reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC FOR UPDATE', event['id'])
+      reservations = db.xquery('SELECT r.*, s.rank AS sheet_rank, s.num AS sheet_num, s.price AS sheet_price, e.price AS event_price FROM reservations r INNER JOIN sheets s ON s.id = r.sheet_id INNER JOIN events e ON e.id = r.event_id WHERE r.event_id = ? ORDER BY reserved_at ASC', event['id'])
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reservations.each do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << event['id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id'].to_s},#{event['id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
@@ -539,29 +574,10 @@ FOR UPDATE
 SQL
       reservations = db.query(sql.gsub("\n", " "))
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
-      body = keys.join(',')
-      body << "\n"
+      body = keys.join(',') << "\n"
 
       reports = reservations.map do |reservation|
-        a = reservation['canceled_at']&.iso8601 || ''
-        ret = ""
-        ret << reservation['id'].to_s
-        ret << ','
-        ret << reservation['event_id'].to_s
-        ret << ","
-        ret << reservation['sheet_rank'].to_s
-        ret << ","
-        ret << reservation['sheet_num'].to_s
-        ret << ","
-        ret << (reservation['event_price'] + reservation['sheet_price']).to_s
-        ret << ","
-        ret << reservation['user_id'].to_s
-        ret << ","
-        ret << reservation['reserved_at'].iso8601
-        ret << ","
-        ret << a
-        ret << "\n"
-        body << ret
+        body << "#{reservation['id']},#{reservation['event_id']},#{reservation['sheet_rank']},#{reservation['sheet_num']},#{reservation['event_price'] + reservation['sheet_price']},#{reservation['user_id']},#{reservation['reserved_at'].iso8601},#{reservation['canceled_at']&.iso8601 || ''}\n"
       end
 
       render_report_csv(body)
