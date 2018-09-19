@@ -137,7 +137,9 @@ SQL
 
       
       def get_events_from_ids(event_ids, login_user_id = nil, events: nil, without_detail: false)
-        events ||= db.xquery("SELECT * FROM events WHERE id IN (#{event_ids.join(", ")}) ORDER BY FIELD(id,#{event_ids.join(", ")})").to_a
+        unless event_ids.nil?
+          events ||= db.xquery("SELECT * FROM events WHERE id IN (#{event_ids.join(", ")}) ORDER BY FIELD(id,#{event_ids.join(", ")})").to_a
+        end
 
         event_ids ||= events.map {|row| row['id']}
   
@@ -337,7 +339,7 @@ SQL
       events_with_id = get_events_from_ids(rows.map {|row| row['event_id']}.uniq).group_by {|row| row['id']}
       recent_reservations = rows.map do |row|
         event = events_with_id[row['event_id']].first
-        price = event['sheets'][row['sheet_rank']]['price']
+        price = event['price'] + rank_to_price(row['sheet_rank'])
         event.delete('sheets')
         event.delete('total')
         event.delete('remains')
