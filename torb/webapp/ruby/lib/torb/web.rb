@@ -203,7 +203,7 @@ SQL
               row.delete('canceled_at')
               row.delete('event_id')
               row.delete('id')
-              row.delete('price')
+              #row.delete('price')
               row.delete('user_id')
               event['sheets'][row['rank']]['detail'] << row
             end
