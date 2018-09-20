@@ -250,6 +250,32 @@ SQL
         end
       end
 
+      def rank_to_begin_end(rank)
+        case rank
+        when "S"
+          [1, 50]
+        when "A"
+          [51, 200]
+        when "B"
+          [201, 500]
+        when "C"
+          [500, 1000]
+        end
+      end
+
+      def sheet_id_to_num(sheet_id)
+        case sheet_id
+        when 1..50
+          sheet_id
+        when 51..200
+          sheet_id - 50
+        when 201..500
+          sheet_id - 200
+        when 501..1000
+          sheet_id - 500
+        end
+      end
+
       def sanitize_event(event)
         sanitized = event.dup  # shallow clone
         sanitized.delete('price')
@@ -396,6 +422,7 @@ SQL
 
     post '/api/events/:id/actions/reserve', login_required: true do |event_id|
       rank = body_params['sheet_rank']
+      sheet_begin, sheet_end = rank_to_begin_end(rank)
 
       user  = get_login_user
       event = get_event(event_id, user['id'])
@@ -406,7 +433,7 @@ SQL
       reservation_id = nil
       loop do
         db.query('BEGIN')
-        sheet = db.xquery('SELECT * FROM sheets WHERE id NOT IN (SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL FOR UPDATE) AND `rank` = ? ORDER BY RAND() LIMIT 1', event['id'], rank).first
+        sheet = db.xquery('SELECT sheet_id FROM reservations WHERE event_id = ? AND canceled_at IS NULL AND sheet_id BETWEEN ? AND ? FOR UPDATE', event['id'], sheet_begin, sheet_end).to_a.sample
         unless sheet
           db.query('COMMIT')
           halt_with_error 409, 'sold_out'
@@ -425,7 +452,7 @@ SQL
       end
 
       status 202
-      { id: reservation_id, sheet_rank: rank, sheet_num: sheet['num'] }.to_json
+      { id: reservation_id, sheet_rank: rank, sheet_num: sheet_id_to_num(sheet['sheet_id']) }.to_json
     end
 
     delete '/api/events/:id/sheets/:rank/:num/reservation', login_required: true do |event_id, rank, num|
