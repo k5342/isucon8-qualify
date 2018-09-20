@@ -566,7 +566,6 @@ FROM reservations AS r
 INNER JOIN sheets s ON s.id = r.sheet_id 
 INNER JOIN events e ON e.id = r.event_id 
 ORDER BY reserved_at ASC 
-FOR UPDATE
 SQL
       reservations = db.xquery(sql.gsub("\n", " "), )
       keys = %i[reservation_id event_id rank num price user_id sold_at canceled_at]
